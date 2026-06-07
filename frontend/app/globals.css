@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-navy: #1e3a5f;
+  --color-navy-deep: #15294a;
+  --color-gold: #c8a85a;
+  --color-gold-soft: #d9bf83;
+  --color-bg: #fafaf7;
+  --color-bg-tint: #f3f1e8;
+  --color-text: #2c3e50;
+  --color-muted: #7a8595;
+}
+
+html,
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+body {
+  /* Subtle off-white paper feel with a near-invisible navy/gold haze. */
+  background-image:
+    radial-gradient(1100px 600px at 12% -10%, rgba(30, 58, 95, 0.045), transparent 70%),
+    radial-gradient(900px 500px at 100% 0%, rgba(200, 168, 90, 0.06), transparent 65%),
+    radial-gradient(800px 600px at 50% 110%, rgba(30, 58, 95, 0.035), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Subtle fade for the "Thinking…" indicator — no bouncing/spinning. */
+@keyframes econbot-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+.econbot-pulse {
+  animation: econbot-pulse 1.6s ease-in-out infinite;
+}
+
+/* Subtle entry animation for new chat cards. */
+@keyframes econbot-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.econbot-card-enter {
+  animation: econbot-fade-in 0.35s ease-out both;
+}
+
+/* Polished native select — keep the look conservative. */
+select.econbot-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%231e3a5f' d='M6 8 0 0h12z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 0.7rem;
+  padding-right: 2.25rem;
+}
+
+/* Sticky composer backdrop blur. */
+.econbot-composer-blur {
+  backdrop-filter: saturate(140%) blur(12px);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  background-color: rgba(250, 250, 247, 0.85);
+}
+
+/* Hide scrollbars on chip rails. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

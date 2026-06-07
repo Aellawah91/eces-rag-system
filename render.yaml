@@ -1,0 +1,49 @@
+# Render Blueprint for the EconBot RAG system.
+# After connecting this repo to Render, open https://dashboard.render.com/blueprints
+# and point it at this repo. Render will provision both services automatically.
+#
+# IMPORTANT: After creation, set the secret env vars in each service's
+# Environment tab (OPENAI_API_KEY, QDRANT_URL, QDRANT_API_KEY, COHERE_API_KEY).
+# They are intentionally marked `sync: false` here so they are NEVER stored in git.
+
+services:
+  - type: web
+    name: econbot-backend
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.7
+      - key: ALLOWED_ORIGINS
+        # Replace this with your deployed frontend URL after the frontend
+        # service is created (Render shows the URL on the frontend's page).
+        value: https://econbot-frontend.onrender.com
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+
+  - type: web
+    name: econbot-frontend
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- -p $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: NEXT_PUBLIC_BACKEND_URL
+        # Replace with your deployed backend URL after the backend service is
+        # created (Render shows the URL on the backend's service page).
+        value: https://econbot-backend.onrender.com
