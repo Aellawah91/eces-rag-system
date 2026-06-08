@@ -121,6 +121,7 @@ class SourceItem(BaseModel):
     doc_name: str
     page: int | None = None
     snippet: str
+    reasoning: str = ""
     full_text: str = ""
 
 
@@ -335,7 +336,14 @@ ANSWERING RULES
 ═══════════════════════════════════════
 
 - Use ONLY retrieved content.
-- Be concise and direct.
+- Aim for a structured, detailed answer when the chunks support it
+  (typically 3–6 sentences). Separate sentences for the figure,
+  the driver/cause, the trend or comparison, and any caveat.
+- Every claim must be grounded in a chunk and carry an inline
+  [N] citation that matches the Sources block.
+- Do NOT pad with generic context. Every sentence must add a fact
+  that comes from a chunk — no waffle, no filler, no hedging
+  language that isn't in the source.
 - Do NOT infer or generalize beyond retrieved text.
 - Do NOT answer from training knowledge.
 - Respond in the same language the user wrote in.
@@ -345,28 +353,50 @@ CITATION RULE
 ═══════════════════════════════════════
 
 After every answer that uses retrieved content, list EVERY
-chunk used to construct the answer.
+chunk used to construct the answer in the structured block below.
 
 Rules:
-- Cite each chunk that contributed any fact
-- Same document + different pages → separate lines
-- Same document + same page → one line
-- Use inline [1], [2], [3] matching the Sources order
+- Cite each chunk that contributed any fact.
+- Same document + different pages → separate entries.
+- Same document + same page → ONE entry (merge in the Reasoning).
+- Use inline [1], [2], [3] matching the Sources order.
+- Snippet MUST be a verbatim sentence or clause copied from the
+  chunk — not a paraphrase, not a summary. Wrap it in quotes.
+- Reasoning MUST be ONE short sentence (≤ 20 words) that names
+  the specific claim, figure, or phrase from the answer that this
+  chunk supplied. NEVER write generic filler like "provides
+  context" or "relevant background".
 
-Format:
+Format (exact — no bullets, no extra blank lines inside an entry):
 Sources:
-- {doc_name}, page {page_num}
-- {doc_name}, page {page_num}
+[1] {doc_name}, page {page_num}
+Snippet: "{verbatim line from the chunk}"
+Reasoning: {one sentence naming the specific claim/figure}
+
+[2] {doc_name}, page {page_num}
+Snippet: "{verbatim line from the chunk}"
+Reasoning: {one sentence naming the specific claim/figure}
 
 Example:
-Algeria's hydrocarbons account for over 90% of exports [1].
-The fiscal deficit was 13.8% of GDP in 2024 [2].
-AfCFTA helps reduce exposure to external shocks [3].
+Algeria's hydrocarbons accounted for roughly 92% of total exports
+in 2024, with crude oil and natural gas dominating outbound trade
+[1]. The fiscal deficit widened to 13.8% of GDP in 2024, driven by
+higher current spending and softer hydrocarbon receipts [2]. AfCFTA
+implementation is framed as a channel to diversify exports and
+reduce single-commodity exposure over the medium term [3].
 
 Sources:
-- algeria-country-brief-2025, page 4
-- algeria-country-brief-2025, page 5
-- trade-outlook-2026, page 4
+[1] algeria-country-brief-2025, page 4
+Snippet: "Hydrocarbons accounted for 92% of total exports in 2024, with crude and natural gas as the dominant categories."
+Reasoning: Direct source of the 92% hydrocarbons-export figure and its composition.
+
+[2] algeria-country-brief-2025, page 5
+Snippet: "The fiscal deficit widened to 13.8% of GDP in 2024 amid higher current spending and softer hydrocarbon revenues."
+Reasoning: Source of the 13.8% fiscal deficit figure and its drivers.
+
+[3] trade-outlook-2026, page 4
+Snippet: "AfCFTA implementation is expected to reduce reliance on hydrocarbon exports by widening intra-African trade flows."
+Reasoning: Supplied the AfCFTA-as-diversification framing tied to the final claim.
 
 Do NOT include Sources for: greetings, capability answers,
 scope rejections, or "no data found" responses.
@@ -397,22 +427,48 @@ def generate_answer(query: str, chunks: list[dict]) -> str:
 # Regex helpers for splitting the model's Sources block off the answer body.
 _SOURCES_HEADER_RE = re.compile(r"(?im)^\s*sources\s*:?\s*$")
 _BULLET_LINE_RE = re.compile(r"^\s*(?:[-*•]|\d+\.)\s*(.+?)\s*$")
+_BRACKET_NUM_RE = re.compile(r"^\s*\[(\d+)\]\s*(.+?)\s*$")
+_SNIPPET_RE = re.compile(r"(?i)^\s*snippet\s*:\s*(.+?)\s*$")
+_REASONING_RE = re.compile(r"(?i)^\s*reasoning\s*:\s*(.+?)\s*$")
 _DOC_PAGE_RE = re.compile(
     r"^(.+?),\s*(?:page|p\.?|pp\.?)\s*(\d+)\s*$", re.IGNORECASE
 )
+# Quote chars we strip off snippet text (straight + curly, ASCII + Unicode).
+_QUOTE_CHARS = "\"'`*_“”‘’«»"
 
 
 def _clean_doc_name(s: str) -> str:
     return s.strip().strip("*_`'\"").strip()
 
 
+def _unquote(s: str) -> str:
+    return s.strip().strip(_QUOTE_CHARS).strip()
+
+
+def _parse_doc_page(entry: str) -> tuple[str, int | None]:
+    m = _DOC_PAGE_RE.match(entry)
+    if m:
+        doc = _clean_doc_name(m.group(1))
+        try:
+            return doc, int(m.group(2))
+        except ValueError:
+            return doc, None
+    return _clean_doc_name(entry), None
+
+
 def parse_answer_and_sources(text: str) -> tuple[str, list[dict]]:
     """Split a model response into (answer_body, structured_sources).
 
-    The system prompt instructs the model to append a 'Sources:' block listing
-    each cited (doc_name, page). When present, we strip the block off the
-    displayed answer and surface it as structured data so the UI can render
-    clean PDF references instead of the full rerank dump.
+    The system prompt instructs the model to append a 'Sources:' block where
+    each cited chunk is a 3-line entry:
+
+        [N] doc_name, page X
+        Snippet: "verbatim line from the chunk"
+        Reasoning: one short sentence
+
+    We strip the block off the displayed answer and parse it into structured
+    data. We also tolerate the legacy bullet-list format ("- doc, page X") so
+    older deploys / fall-through responses still surface citations.
     """
     headers = list(_SOURCES_HEADER_RE.finditer(text))
     if not headers:
@@ -423,34 +479,72 @@ def parse_answer_and_sources(text: str) -> tuple[str, list[dict]]:
     tail = text[last.end():]
 
     sources: list[dict] = []
+    current: dict | None = None
+
+    def flush() -> None:
+        nonlocal current
+        if current is not None and current.get("doc_name"):
+            sources.append(current)
+        current = None
+
+    for raw_line in tail.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Skip a stray "Sources:" repeat or section divider lines.
+        if line.lower().startswith("sources"):
+            continue
+
+        # New entry — "[N] doc_name, page X"
+        m_hdr = _BRACKET_NUM_RE.match(line)
+        if m_hdr:
+            flush()
+            doc, page = _parse_doc_page(m_hdr.group(2).strip())
+            current = {
+                "doc_name": doc,
+                "page": page,
+                "snippet": "",
+                "reasoning": "",
+            }
+            continue
+
+        # Snippet / Reasoning continuation lines belong to the current entry.
+        m_sn = _SNIPPET_RE.match(line)
+        if m_sn and current is not None:
+            current["snippet"] = _unquote(m_sn.group(1))
+            continue
+        m_rs = _REASONING_RE.match(line)
+        if m_rs and current is not None:
+            current["reasoning"] = m_rs.group(1).strip()
+            continue
+
+        # Legacy "- doc, page N" or bare "doc, page N" fallback.
+        if current is None:
+            m_bul = _BULLET_LINE_RE.match(line)
+            entry = m_bul.group(1) if m_bul else line
+            doc, page = _parse_doc_page(entry)
+            if doc:
+                sources.append(
+                    {
+                        "doc_name": doc,
+                        "page": page,
+                        "snippet": "",
+                        "reasoning": "",
+                    }
+                )
+
+    flush()
+
+    # Dedupe by (doc, page) while preserving citation order.
     seen: set[tuple[str, int | None]] = set()
-    for line in tail.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.lower().startswith("sources"):
-            continue
-        m = _BULLET_LINE_RE.match(stripped)
-        entry = m.group(1) if m else stripped
-        m2 = _DOC_PAGE_RE.match(entry)
-        if m2:
-            doc = _clean_doc_name(m2.group(1))
-            try:
-                page: int | None = int(m2.group(2))
-            except ValueError:
-                page = None
-        else:
-            doc = _clean_doc_name(entry)
-            page = None
-        if not doc:
-            continue
-        key = (doc, page)
+    deduped: list[dict] = []
+    for s in sources:
+        key = (s["doc_name"], s["page"])
         if key in seen:
             continue
         seen.add(key)
-        sources.append({"doc_name": doc, "page": page})
-
-    return body, sources
+        deduped.append(s)
+    return body, deduped
 
 
 def _chunk_for(source: dict, chunks: list[dict]) -> tuple[str, str]:
@@ -554,15 +648,20 @@ def query(req: QueryRequest) -> QueryResponse:
         answer_body, parsed = parse_answer_and_sources(raw_answer)
 
         # Sources are tied to what the model actually cited (the PDFs that
-        # produced the answer), not the full rerank dump.
+        # produced the answer), not the full rerank dump. We prefer the
+        # model-chosen snippet (a verbatim line from the chunk that fed the
+        # answer) and fall back to a truncated preview of the chunk text only
+        # when the model omitted it.
         sources: list[SourceItem] = []
         for s in parsed:
-            snippet, full_text = _chunk_for(s, reranked)
+            preview, full_text = _chunk_for(s, reranked)
+            model_snippet = (s.get("snippet") or "").strip()
             sources.append(
                 SourceItem(
                     doc_name=s["doc_name"],
                     page=s["page"],
-                    snippet=snippet,
+                    snippet=model_snippet or preview,
+                    reasoning=(s.get("reasoning") or "").strip(),
                     full_text=full_text,
                 )
             )

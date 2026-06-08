@@ -17,6 +17,7 @@ type Source = {
   doc_name: string;
   page: number | null;
   snippet: string;
+  reasoning?: string;
   full_text?: string;
 };
 
@@ -405,14 +406,22 @@ export default function Page() {
                             )}
                           </p>
                           {s.snippet && (
-                            <details className="mt-1 group">
-                              <summary className="cursor-pointer text-[10.5px] uppercase tracking-[0.18em] text-ink/40 hover:text-navy/75 transition-colors select-none">
-                                quoted excerpt
-                              </summary>
-                              <p className="mt-1.5 text-xs italic text-ink/70 leading-relaxed">
+                            <p className="mt-2 text-xs text-ink/75 leading-relaxed">
+                              <span className="font-serif font-semibold text-navy/80 mr-1">
+                                Snippet:
+                              </span>
+                              <span className="italic">
                                 &ldquo;{s.snippet}&rdquo;
-                              </p>
-                            </details>
+                              </span>
+                            </p>
+                          )}
+                          {s.reasoning && (
+                            <p className="mt-1.5 text-xs text-ink/75 leading-relaxed">
+                              <span className="font-serif font-semibold text-navy/80 mr-1">
+                                Reasoning:
+                              </span>
+                              {s.reasoning}
+                            </p>
                           )}
                           {s.full_text && (
                             <details className="mt-2 group">
