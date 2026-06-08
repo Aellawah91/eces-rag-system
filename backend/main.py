@@ -121,6 +121,7 @@ class SourceItem(BaseModel):
     doc_name: str
     page: int | None = None
     snippet: str
+    full_text: str = ""
 
 
 class QueryResponse(BaseModel):
@@ -452,8 +453,12 @@ def parse_answer_and_sources(text: str) -> tuple[str, list[dict]]:
     return body, sources
 
 
-def _snippet_for(source: dict, chunks: list[dict]) -> str:
-    """Find a snippet from the reranked chunks that matches a cited source."""
+def _chunk_for(source: dict, chunks: list[dict]) -> tuple[str, str]:
+    """Find (snippet, full_text) from the reranked chunks for a cited source.
+
+    The snippet is a short preview shown inline; the full_text is the entire
+    retrieved chunk and powers the "View full chunk" disclosure in the UI.
+    """
     for c in chunks:
         cdoc = str(c.get("doc_name", "")).strip()
         cpage_raw = c.get("page")
@@ -463,8 +468,9 @@ def _snippet_for(source: dict, chunks: list[dict]) -> str:
             cpage = None
         if cdoc == source["doc_name"] and cpage == source["page"]:
             text = str(c.get("text", "")).strip()
-            return text[:220] + ("…" if len(text) > 220 else "")
-    return ""
+            snippet = text[:220] + ("…" if len(text) > 220 else "")
+            return snippet, text
+    return "", ""
 
 
 # ---------------------------------------------------------------------------
@@ -549,14 +555,17 @@ def query(req: QueryRequest) -> QueryResponse:
 
         # Sources are tied to what the model actually cited (the PDFs that
         # produced the answer), not the full rerank dump.
-        sources = [
-            SourceItem(
-                doc_name=s["doc_name"],
-                page=s["page"],
-                snippet=_snippet_for(s, reranked),
+        sources: list[SourceItem] = []
+        for s in parsed:
+            snippet, full_text = _chunk_for(s, reranked)
+            sources.append(
+                SourceItem(
+                    doc_name=s["doc_name"],
+                    page=s["page"],
+                    snippet=snippet,
+                    full_text=full_text,
+                )
             )
-            for s in parsed
-        ]
 
         latency_ms = int((time.perf_counter() - start) * 1000)
         log.info(

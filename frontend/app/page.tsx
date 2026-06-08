@@ -17,6 +17,7 @@ type Source = {
   doc_name: string;
   page: number | null;
   snippet: string;
+  full_text?: string;
 };
 
 type QueryResponse = {
@@ -411,6 +412,18 @@ export default function Page() {
                               <p className="mt-1.5 text-xs italic text-ink/70 leading-relaxed">
                                 &ldquo;{s.snippet}&rdquo;
                               </p>
+                            </details>
+                          )}
+                          {s.full_text && (
+                            <details className="mt-2 group">
+                              <summary className="cursor-pointer text-[11px] text-navy/70 hover:text-gold transition-colors select-none font-sans">
+                                🔍 View full chunk
+                              </summary>
+                              <div className="mt-2 rounded-md border border-navy/10 bg-white/70 p-3 max-h-72 overflow-y-auto">
+                                <p className="text-xs text-ink/80 leading-relaxed whitespace-pre-wrap font-sans">
+                                  {s.full_text}
+                                </p>
+                              </div>
                             </details>
                           )}
                         </div>
