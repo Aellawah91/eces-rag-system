@@ -8,7 +8,6 @@ const display = Fraunces({
   style: ["normal", "italic"],
   variable: "--font-display",
   display: "swap",
-  axes: ["SOFT", "opsz"],
 });
 
 const serif = Newsreader({
@@ -17,6 +16,7 @@ const serif = Newsreader({
   style: ["normal", "italic"],
   variable: "--font-serif",
   display: "swap",
+  adjustFontFallback: false,
 });
 
 const sans = Inter({
