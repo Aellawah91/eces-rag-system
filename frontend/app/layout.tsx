@@ -1,10 +1,20 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, Inter } from "next/font/google";
+import { Fraunces, Newsreader, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const serif = Cormorant_Garamond({
+const display = Fraunces({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "900"],
+  style: ["normal", "italic"],
+  variable: "--font-display",
+  display: "swap",
+  axes: ["SOFT", "opsz"],
+});
+
+const serif = Newsreader({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
   variable: "--font-serif",
   display: "swap",
 });
@@ -16,10 +26,17 @@ const sans = Inter({
   display: "swap",
 });
 
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "EconBot — ECES Research Assistant",
+  title: "EconBot — The ECES Dispatch",
   description:
-    "Egyptian Centre for Economic Studies — African Economic Research Assistant",
+    "Egyptian Centre for Economic Studies — An archival research instrument for African economic literature.",
 };
 
 export default function RootLayout({
@@ -28,8 +45,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${serif.variable} ${sans.variable}`}>
-      <body className="min-h-screen bg-parchment text-ink font-sans antialiased">
+    <html
+      lang="en"
+      className={`${display.variable} ${serif.variable} ${sans.variable} ${mono.variable}`}
+    >
+      <body className="min-h-screen bg-paper text-ink font-serif antialiased">
         {children}
       </body>
     </html>
